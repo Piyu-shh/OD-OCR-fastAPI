@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 numpy
-opencv-python-headless  # Use "opencv-python-headless" for server environments to avoid GUI dependencies
+opencv-python-headless
 SpeechRecognition
 gTTS
+pytesseract
