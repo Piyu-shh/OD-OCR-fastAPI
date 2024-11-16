@@ -2,15 +2,21 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import numpy as np
 import cv2
-import easyocr
+from paddleocr import PaddleOCR
+
+import os
 
 app = FastAPI()
 
 # Threshold for object detection
 thres = 0.45  # Confidence threshold
 
+# Paths to models folder
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+
 # Load class names for object detection
-classFile = "models/coco.names"
+classFile = os.path.join(MODEL_DIR, "coco.names")
 try:
     with open(classFile, 'rt') as f:
         classNames = f.read().rstrip('\n').split('\n')
@@ -18,8 +24,8 @@ except FileNotFoundError:
     raise RuntimeError("Error: 'coco.names' file not found. Ensure it is placed in the 'models' directory.")
 
 # Load pre-trained model for object detection
-configPath = 'models/ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
-weightsPath = 'models/frozen_inference_graph.pb'
+configPath = os.path.join(MODEL_DIR, "ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt")
+weightsPath = os.path.join(MODEL_DIR, "frozen_inference_graph.pb")
 try:
     net = cv2.dnn_DetectionModel(weightsPath, configPath)
     net.setInputSize(320, 320)
@@ -29,6 +35,14 @@ try:
 except cv2.error as e:
     raise RuntimeError(f"Error loading model: {e}. Ensure model files are placed in the 'models' directory.")
 
+# Initialize PaddleOCR
+ocr = PaddleOCR(
+    use_angle_cls=True,
+    lang='en',
+    det_model_dir=os.path.join(MODEL_DIR, "det"),  # Directory for detection model
+    rec_model_dir=os.path.join(MODEL_DIR, "rec"),  # Directory for recognition model
+    cls_model_dir=os.path.join(MODEL_DIR, "cls"),  # Directory for classification model
+)
 
 @app.post("/analyze-image")
 async def analyze_image(
@@ -36,7 +50,7 @@ async def analyze_image(
     mode: str = Form(...),
 ) -> JSONResponse:
     """
-    Analyze the uploaded image based on the mode specified ("OD" for Object Detection).
+    Analyze the uploaded image based on the mode specified ("OD" for Object Detection, "OCR" for Optical Character Recognition).
     """
     try:
         # Load the image from the uploaded file
@@ -50,10 +64,10 @@ async def analyze_image(
         if mode.upper() == "OD":
             # Perform Object Detection
             return detect_objects(img)
-        elif mode.upper()=="OCR":
+        elif mode.upper() == "OCR":
             return perform_ocr(img)
         else:
-            raise HTTPException(status_code=400, detail="Invalid mode. Choose 'OD'.")
+            raise HTTPException(status_code=400, detail="Invalid mode. Choose 'OD' or 'OCR'.")
     except HTTPException as he:
         # Re-raise HTTP exceptions to be handled by FastAPI
         raise he
@@ -86,27 +100,20 @@ def detect_objects(img) -> JSONResponse:
         return JSONResponse(content={"error": "Object detection failed", "details": str(e)}, status_code=500)
 
 
-
 def perform_ocr(img) -> JSONResponse:
     """
-    Perform OCR on the input image using EasyOCR.
+    Perform OCR on the input image using PaddleOCR.
     """
     try:
-        # Convert the image to grayscale for better OCR results
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Convert the image to RGB (PaddleOCR works best with RGB images)
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        # Initialize EasyOCR reader
-       # Initialize EasyOCR reader with the custom model directory
-        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR") # You can add more languages by specifying their codes
+        # Perform OCR using PaddleOCR
+        results = ocr.ocr(rgb_img, cls=True)
 
-        # Perform OCR
-        result = reader.readtext(gray)
+        # Extract text from OCR results
+        extracted_text = " ".join([line[1][0] for line in results[0]])  # Join all detected text pieces
 
-        # Extract text from OCR result
-        extracted_text = " ".join([text[1] for text in result])  # Joining all detected text pieces
-
-        #print(f"OCR extracted text: {extracted_text}")
         return JSONResponse(content={"mode": "OCR", "text": extracted_text})
     except Exception as e:
-        #print(f"Error during OCR: {e}")
         return JSONResponse(content={"error": "OCR failed", "details": str(e)}, status_code=500)
