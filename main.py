@@ -2,7 +2,6 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import numpy as np
 import cv2
-import pytesseract
 
 app = FastAPI()
 
@@ -29,13 +28,14 @@ try:
 except cv2.error as e:
     raise RuntimeError(f"Error loading model: {e}. Ensure model files are placed in the 'models' directory.")
 
+
 @app.post("/analyze-image")
 async def analyze_image(
     image: UploadFile = File(...),
     mode: str = Form(...),
 ) -> JSONResponse:
     """
-    Analyze the uploaded image based on the mode specified ("OD" for Object Detection, "OCR" for Text Recognition).
+    Analyze the uploaded image based on the mode specified ("OD" for Object Detection).
     """
     try:
         # Load the image from the uploaded file
@@ -46,28 +46,21 @@ async def analyze_image(
         if img is None:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid image.")
 
-        print(f"Received mode: {mode}")
-
         if mode.upper() == "OD":
             # Perform Object Detection
-            print("Performing Object Detection...")
             return detect_objects(img)
-        elif mode.upper() == "OCR":
-            # Perform OCR
-            print("Performing OCR...")
-            return perform_ocr(img)
         else:
-            raise HTTPException(status_code=400, detail="Invalid mode. Choose 'OD' or 'OCR'.")
+            raise HTTPException(status_code=400, detail="Invalid mode. Choose 'OD'.")
     except HTTPException as he:
         # Re-raise HTTP exceptions to be handled by FastAPI
         raise he
     except Exception as e:
-        print(f"Error: {e}")
         return JSONResponse(content={"error": "Internal Server Error", "details": str(e)}, status_code=500)
+
 
 def detect_objects(img) -> JSONResponse:
     """
-    Perform object detection on the input image.
+    Perform object detection on the input image and return unique detected object names.
     """
     try:
         # Perform object detection
@@ -77,41 +70,19 @@ def detect_objects(img) -> JSONResponse:
         if classIds is None or len(classIds) == 0:
             return JSONResponse(content={"mode": "OD", "detected_objects": [], "message": "No objects detected."})
 
-        detected_objects = []
+        detected_objects = set()  # Use a set to ensure unique object names
 
-        # Ensure classIds and confs are iterable
-        if isinstance(classIds, (list, np.ndarray)):
-            # Handle both single and multiple detections
-            if classIds.ndim == 1:
-                # Single detection, wrap in a list
-                classIds = [classIds]
-                confs = [confs]
-                bbox = [bbox]
-            for idx in range(len(classIds)):
-                classId = classIds[idx][0] if isinstance(classIds[idx], (list, tuple, np.ndarray)) else classIds[idx]
-                confidence = confs[idx][0] if isinstance(confs[idx], (list, tuple, np.ndarray)) else confs[idx]
-                box = bbox[idx].tolist() if isinstance(bbox[idx], (list, tuple, np.ndarray)) else bbox[idx]
+        # Process detections
+        for classId in classIds.flatten():
+            # Safeguard against classId out of range
+            obj_name = classNames[classId - 1] if classId - 1 < len(classNames) else "Unknown"
+            detected_objects.add(obj_name)
 
-                # Safeguard against classId out of range
-                if classId - 1 < len(classNames):
-                    obj_name = classNames[classId - 1]
-                else:
-                    obj_name = "Unknown"
-
-                detected_objects.append({
-                    "object": obj_name,
-                    "confidence": round(float(confidence) * 100, 2),
-                    "bounding_box": box
-                })
-
-                print(f"Detected {obj_name} with confidence {round(float(confidence) * 100, 2)}% at {box}")
-        else:
-            raise ValueError("Invalid format for detection results.")
-
-        return JSONResponse(content={"mode": "OD", "detected_objects": detected_objects})
+        return JSONResponse(content={"mode": "OD", "detected_objects": list(detected_objects)})
     except Exception as e:
-        print(f"Error during object detection: {e}")
         return JSONResponse(content={"error": "Object detection failed", "details": str(e)}, status_code=500)
+
+
 
 def perform_ocr(img) -> JSONResponse:
     """
