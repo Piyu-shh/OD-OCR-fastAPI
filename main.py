@@ -97,7 +97,7 @@ def perform_ocr(img) -> JSONResponse:
 
         # Initialize EasyOCR reader
        # Initialize EasyOCR reader with the custom model directory
-        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR", gpu=False) # You can add more languages by specifying their codes
+        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR") # You can add more languages by specifying their codes
 
         # Perform OCR
         result = reader.readtext(gray)
@@ -105,8 +105,8 @@ def perform_ocr(img) -> JSONResponse:
         # Extract text from OCR result
         extracted_text = " ".join([text[1] for text in result])  # Joining all detected text pieces
 
-        print(f"OCR extracted text: {extracted_text}")
+        #print(f"OCR extracted text: {extracted_text}")
         return JSONResponse(content={"mode": "OCR", "text": extracted_text})
     except Exception as e:
-        print(f"Error during OCR: {e}")
+        #print(f"Error during OCR: {e}")
         return JSONResponse(content={"error": "OCR failed", "details": str(e)}, status_code=500)
