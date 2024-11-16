@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import numpy as np
 import cv2
+import easyocr
 
 app = FastAPI()
 
@@ -49,6 +50,8 @@ async def analyze_image(
         if mode.upper() == "OD":
             # Perform Object Detection
             return detect_objects(img)
+        elif mode.upper()=="OCR":
+            return perform_ocr(img)
         else:
             raise HTTPException(status_code=400, detail="Invalid mode. Choose 'OD'.")
     except HTTPException as he:
@@ -86,14 +89,24 @@ def detect_objects(img) -> JSONResponse:
 
 def perform_ocr(img) -> JSONResponse:
     """
-    Perform OCR on the input image.
+    Perform OCR on the input image using EasyOCR.
     """
     try:
         # Convert the image to grayscale for better OCR results
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray)
-        print(f"OCR extracted text: {text}")
-        return JSONResponse(content={"mode": "OCR", "text": text})
+
+        # Initialize EasyOCR reader
+       # Initialize EasyOCR reader with the custom model directory
+        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR", gpu=False) # You can add more languages by specifying their codes
+
+        # Perform OCR
+        result = reader.readtext(gray)
+
+        # Extract text from OCR result
+        extracted_text = " ".join([text[1] for text in result])  # Joining all detected text pieces
+
+        print(f"OCR extracted text: {extracted_text}")
+        return JSONResponse(content={"mode": "OCR", "text": extracted_text})
     except Exception as e:
         print(f"Error during OCR: {e}")
         return JSONResponse(content={"error": "OCR failed", "details": str(e)}, status_code=500)
