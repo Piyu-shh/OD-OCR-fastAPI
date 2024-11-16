@@ -4,4 +4,4 @@ numpy
 opencv-python-headless
 easyocr
 pillow
-
+python-multipart
