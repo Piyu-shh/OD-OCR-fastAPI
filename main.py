@@ -97,7 +97,7 @@ def perform_ocr(img) -> JSONResponse:
 
         # Initialize EasyOCR reader
        # Initialize EasyOCR reader with the custom model directory
-        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR", gpu=False) # You can add more languages by specifying their codes
+        reader = easyocr.Reader(['en'], model_storage_directory="EasyOCR") # You can add more languages by specifying their codes
 
         # Perform OCR
         result = reader.readtext(gray)
